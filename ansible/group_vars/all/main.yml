@@ -1,0 +1,73 @@
+# BI Dashboard deployment settings. Secrets live in group_vars/all/vault.yml
+# (see vault.example.yml).
+
+# ---- application ------------------------------------------------------------
+bi_source_dir: "{{ playbook_dir }}/.."     # project root on the control machine
+bi_app_dir: /opt/bi-dashboard
+bi_app_user: www-data
+bi_app_group: www-data
+bi_service_name: stardash
+bi_start_service: true                     # false = install everything but leave the service stopped
+
+# gunicorn
+bi_gunicorn_bind: "127.0.0.1:8000"
+bi_gunicorn_workers: 3
+bi_gunicorn_threads: 2
+bi_gunicorn_timeout: 120
+
+# NGINX
+bi_server_name: "_"
+bi_http_port: 80
+bi_nginx_remove_default_site: true
+bi_client_max_body_size: 50m
+
+# Firewall (ufw): opens SSH and the HTTP port, then enables ufw
+bi_configure_ufw: false
+
+# ---- config.py values ---------------------------------------------------------
+bi_db_host: 172.31.176.1
+bi_db_port: 5432
+bi_db_name: test
+bi_db_user: claude
+bi_db_password: claude
+bi_config_schema: stardash
+bi_admin_role: stardash_admin
+bi_secret_key: "{{ vault_bi_secret_key }}"
+bi_db_pool_min: 1
+bi_db_pool_max: 10
+bi_max_filter_values: 500
+bi_max_breakdown_series: 10
+bi_max_table_rows: 1000
+
+# Create/upgrade the configuration tables (scripts/init_db.py) on every run
+bi_run_init_db: true
+
+# ---- database setup (role bi_database) ------------------------------------------
+# true  = the playbook creates the database, service account, admin role and grants
+# false = you manage PostgreSQL yourself (see README "Database setup")
+bi_manage_database: false
+
+# true  = install PostgreSQL on the app server itself (single-box install)
+# false = use an existing server at bi_db_host, connecting as bi_db_superuser
+bi_install_postgresql: false
+bi_db_superuser: postgres
+bi_db_superuser_password: "{{ vault_bi_db_superuser_password | default('') }}"
+
+# Login users to create (optional). Passwords come from vault_bi_login_passwords.
+# roles: database roles the user is granted, e.g. the admin role or dashboard roles.
+bi_db_login_users: []
+#  - name: alice
+#    roles: [bi_admin]
+#  - name: bob
+#    roles: [sales_reader]
+
+# Existing login users to add to the admin role
+bi_admin_members: []
+
+# Source views the service account must be able to read
+bi_source_grants: []
+#  - schema: sales
+#    views: [orders_v, invoices_v]
+
+# Load sql/sample_data.sql (demo.sales_demo + role sales_reader) if not already present
+bi_load_sample_data: false

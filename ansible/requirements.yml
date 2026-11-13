@@ -1,0 +1,7 @@
+collections:
+  - name: ansible.posix          # synchronize (rsync the application code)
+    version: ">=1.5.0"
+  - name: community.postgresql   # roles, grants, schema setup
+    version: ">=3.0.0"
+  - name: community.general      # ufw
+    version: ">=8.0.0"

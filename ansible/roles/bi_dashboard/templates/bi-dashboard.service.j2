@@ -1,0 +1,15 @@
+# {{ ansible_managed }}
+[Unit]
+Description=BI Dashboard (gunicorn)
+After=network.target{{ ' postgresql.service' if bi_install_postgresql | bool and bi_manage_database | bool else '' }}
+
+[Service]
+User={{ bi_app_user }}
+Group={{ bi_app_group }}
+WorkingDirectory={{ bi_app_dir }}
+Environment="PATH={{ bi_app_dir }}/venv/bin"
+ExecStart={{ bi_app_dir }}/venv/bin/gunicorn -c gunicorn.conf.py wsgi:app
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

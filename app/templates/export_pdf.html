@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ title }}</title>
+<style>
+  /* Rendered by WeasyPrint (app/export.py), never served to browsers. */
+  @page {
+    size: A4 landscape;
+    margin: 16mm 12mm 14mm;
+    font-family: "DejaVu Sans", "Liberation Sans", Arial, sans-serif;  /* margin boxes don't inherit from body */
+    @top-left { content: string(doctitle); font-size: 8pt; color: #6b7280; }
+    @top-right { content: string(exported); font-size: 8pt; color: #6b7280; }
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8pt; color: #6b7280; }
+  }
+  @page :first { @top-left { content: none; } @top-right { content: none; } }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "DejaVu Sans", "Liberation Sans", Arial, sans-serif; font-size: 9pt; color: #1f2937; }
+  h1 { font-size: 18pt; margin: 0 0 2pt; string-set: doctitle content(); }
+  .exported { color: #6b7280; margin-bottom: 6pt; string-set: exported content(); }
+  .filters { margin-bottom: 10pt; }
+  .chip { display: inline-block; background: #eef2f7; border-radius: 8pt; padding: 1.5pt 7pt; margin: 0 4pt 4pt 0; font-size: 8pt; }
+
+  /* inline-block grid; font-size 0 removes the whitespace gaps between blocks.
+     orphans/widows 1: each row of cards is one line box, so the defaults (2) would push rows to the next page. */
+  .grid { font-size: 0; orphans: 1; widows: 1; }
+  .grid > * { font-size: 9pt; vertical-align: top; }
+  .card { display: inline-block; border: 0.75pt solid #dde2ea; border-radius: 6pt; padding: 8pt 10pt; margin: 0 1% 8pt 0; break-inside: avoid; }
+  .card h2 { font-size: 10.5pt; margin: 0 0 6pt; break-after: avoid; }
+  .full { width: 99%; }
+  .half { width: 48.5%; }
+
+  .kpi { width: 23.75%; }
+  .kpi h2 { font-size: 8.5pt; font-weight: normal; color: #6b7280; }
+  .kpi-value { font-size: 17pt; font-weight: bold; }
+  .kpi-change { font-weight: bold; margin-top: 2pt; }
+  .kpi-change.up { color: #059669; }
+  .kpi-change.down { color: #dc2626; }
+  .kpi-prev { color: #6b7280; font-size: 7.5pt; }
+
+  .chart img { display: block; width: 100%; max-height: 120mm; object-fit: contain; }
+  .half.chart img { max-height: 75mm; }
+
+  /* inline-blocks can't split across pages, so tables are full-width blocks whatever their screen width */
+  .card.table-card { display: block; width: 99%; break-inside: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 8pt; }
+  th { background: #e8edf3; text-align: left; font-weight: bold; }
+  th, td { padding: 2.5pt 5pt; border-bottom: 0.5pt solid #dde2ea; }
+  tr { break-inside: avoid; }
+  tbody tr:nth-child(even) td { background: #f8fafc; }
+  .num { text-align: right; white-space: nowrap; }
+  .note { color: #6b7280; font-size: 7.5pt; margin-top: 4pt; }
+</style>
+</head>
+<body>
+  <h1>{{ title }}</h1>
+  <div class="exported">{{ subtitle }}</div>
+  <div class="filters">{% for line in filter_lines %}<span class="chip">{{ line }}</span>{% endfor %}</div>
+
+  {% if kpis %}
+  <div class="grid">
+    {% for k in kpis %}
+    <div class="card kpi">
+      <h2>{{ k.title }}</h2>
+      <div class="kpi-value">{{ k.value_text }}</div>
+      {% if k.change_text %}<div class="kpi-change {{ k.dir }}">{{ k.change_text }}</div>{% endif %}
+      {% if k.previous_text %}<div class="kpi-prev">{{ k.previous_text }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="grid">
+    {% for w in widgets %}
+    {% if w.type == "chart" %}
+    <div class="card chart {{ w.width }}">
+      <h2>{{ w.title }}</h2>
+      <img src="{{ w.png }}" alt="">
+    </div>
+    {% else %}
+    <div class="card table-card {{ w.width }}">
+      <h2>{{ w.title }}</h2>
+      <table>
+        <thead><tr>{% for c in w.columns %}<th{% if w.numeric[loop.index0] %} class="num"{% endif %}>{{ c }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for row in w.rows %}
+          <tr>{% for v in row %}<td{% if w.numeric[loop.index0] %} class="num"{% endif %}>{{ v }}</td>{% endfor %}</tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if w.truncated %}<div class="note">Showing the first {{ w.rows|length }} of {{ w.total_rows }} rows.</div>{% endif %}
+      {% if not w.rows %}<div class="note">No data for the current filters.</div>{% endif %}
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+</body>
+</html>

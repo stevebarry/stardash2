@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <h1>Dashboards</h1>
+  {% if is_admin %}<button class="btn primary" id="new-dashboard">+ New dashboard</button>{% endif %}
+</div>
+
+{% if dashboards %}
+<ul class="dash-list">
+  {% for d in dashboards %}
+  <li>
+    <a class="dash-link" href="{{ url_for('views.dashboard', dashboard_id=d.id) }}">
+      <span class="dash-name">{{ d.name }}</span>
+      <span class="muted">{{ d.view_schema }}.{{ d.view_name }} &middot; roles: {{ d.roles | join(', ') }}</span>
+    </a>
+    {% if is_admin %}
+    <button class="btn danger delete-dashboard" data-id="{{ d.id }}" data-name="{{ d.name }}">Delete</button>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="muted">No dashboards available{% if is_admin %} &ndash; create one with "New dashboard"{% endif %}.</p>
+{% endif %}
+
+{% if is_admin %}
+<dialog id="new-dashboard-dialog">
+  <form method="dialog" id="new-dashboard-form">
+    <h2>New dashboard</h2>
+    <label>View <select name="view" required></select></label>
+    <label>Dashboard name <input name="dashboard_name" required maxlength="200"></label>
+    <label>Roles allowed to read
+      <select name="roles" multiple size="8" required></select>
+      <small class="muted">Ctrl/Cmd-click to select several.</small>
+    </label>
+    <p class="error" hidden></p>
+    <div class="dialog-actions">
+      <button type="button" class="btn" value="cancel">Cancel</button>
+      <button type="submit" class="btn primary">Create</button>
+    </div>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/common.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard_list.js') }}"></script>
+{% endblock %}

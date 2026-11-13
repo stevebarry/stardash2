@@ -1,0 +1,33 @@
+"""Application configuration for the BI Dashboard.
+
+{{ ansible_managed }} - edit the Ansible variables instead of this file.
+"""
+
+# PostgreSQL service connection used for configuration and dashboard queries
+DB_HOST = {{ bi_db_host | to_json }}
+DB_PORT = {{ bi_db_port | int }}
+DB_NAME = {{ bi_db_name | to_json }}
+DB_USER = {{ bi_db_user | to_json }}
+DB_PASSWORD = {{ bi_db_password | to_json }}
+
+# Schema that holds the application's configuration tables
+CONFIG_SCHEMA = {{ bi_config_schema | to_json }}
+
+# Database role allowed to create/delete dashboards (and read all of them)
+ADMIN_ROLE = {{ bi_admin_role | to_json }}
+
+# Flask session signing key
+SECRET_KEY = {{ bi_secret_key | to_json }}
+
+# Connection pool size for the service connection
+DB_POOL_MIN = {{ bi_db_pool_min | int }}
+DB_POOL_MAX = {{ bi_db_pool_max | int }}
+
+# Maximum distinct values offered in an attribute filter drop-down
+MAX_FILTER_VALUES = {{ bi_max_filter_values | int }}
+
+# Maximum number of breakdown series in a chart (remaining values grouped as "Other")
+MAX_BREAKDOWN_SERIES = {{ bi_max_breakdown_series | int }}
+
+# Maximum rows returned for a table widget
+MAX_TABLE_ROWS = {{ bi_max_table_rows | int }}

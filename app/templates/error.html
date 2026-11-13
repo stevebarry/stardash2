@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <p>{{ message }}</p>
+  <p><a href="{{ url_for('views.dashboard_list') }}">Back to dashboards</a></p>
+</div>
+{% endblock %}

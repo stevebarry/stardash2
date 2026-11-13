@@ -1,0 +1,18 @@
+# Secrets for the deployment. Copy to group_vars/all/vault.yml and encrypt:
+#   cp vault.example.yml group_vars/all/vault.yml
+#   ansible-vault encrypt group_vars/all/vault.yml
+
+# Password of the application service account (bi_db_user)
+vault_bi_db_password: "change_me"
+
+# Flask session signing key: python3 -c "import secrets; print(secrets.token_hex(32))"
+vault_bi_secret_key: "change_me"
+
+# Only needed when bi_manage_database is true and PostgreSQL is NOT installed
+# by this playbook (bi_install_postgresql: false): a superuser on the database server.
+vault_bi_db_superuser_password: ""
+
+# Passwords for login users created by the playbook (see bi_db_login_users)
+vault_bi_login_passwords: {}
+#  alice: "s3cret"
+#  bob: "s3cret"

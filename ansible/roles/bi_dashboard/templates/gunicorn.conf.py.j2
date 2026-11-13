@@ -1,0 +1,8 @@
+# Gunicorn configuration for the BI Dashboard
+# {{ ansible_managed }}
+bind = {{ bi_gunicorn_bind | to_json }}
+workers = {{ bi_gunicorn_workers | int }}
+threads = {{ bi_gunicorn_threads | int }}
+timeout = {{ bi_gunicorn_timeout | int }}
+accesslog = "-"
+errorlog = "-"

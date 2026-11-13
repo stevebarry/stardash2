@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}{{ dashboard.name }} - BI Dashboard{% endblock %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a href="{{ url_for('views.dashboard_list') }}" class="muted">&larr; Dashboards</a>
+    <h1>{{ dashboard.name }}</h1>
+    <span class="muted">{{ dashboard.view_schema }}.{{ dashboard.view_name }}</span>
+  </div>
+  <div class="toolbar">
+    <button class="btn" data-add="kpi">+ KPI</button>
+    <button class="btn" data-add="chart">+ Chart</button>
+    <button class="btn" data-add="table">+ Table</button>
+    <div class="menu">
+      <button class="btn primary" id="export-btn">Export &#9662;</button>
+      <div class="menu-items" id="export-menu" hidden>
+        <button data-export="pdf">PDF</button>
+        <button data-export="docx">Word</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section class="filters card" id="filters">
+  <div class="filter date-filter">
+    <label>Period <select id="f-period"><option value="">Custom</option></select></label>
+    <label>Start <input type="date" id="f-start"></label>
+    <label>End <input type="date" id="f-end"></label>
+  </div>
+  <div id="attr-filters" class="attr-filters"></div>
+  <div class="filter-actions">
+    <button class="btn primary" id="f-apply">Apply</button>
+    <button class="btn" id="f-reset">Reset</button>
+  </div>
+</section>
+
+<div id="status" class="muted"></div>
+<section id="widgets" class="widgets"></section>
+
+<dialog id="item-dialog">
+  <form method="dialog" id="item-form">
+    <h2 id="item-dialog-title"></h2>
+    <div id="item-fields"></div>
+    <p class="error" hidden></p>
+    <div class="dialog-actions">
+      <button type="button" class="btn" value="cancel">Cancel</button>
+      <button type="submit" class="btn primary" id="item-submit">Save</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+{% block scripts %}
+<script>window.DASHBOARD_ID = {{ dashboard.id | tojson }};</script>
+<script src="{{ url_for('static', filename='js/common.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

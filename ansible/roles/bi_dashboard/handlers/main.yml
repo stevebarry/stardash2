@@ -1,0 +1,16 @@
+- name: Restart bi-dashboard
+  ansible.builtin.systemd:
+    name: "{{ bi_service_name }}"
+    state: restarted
+    daemon_reload: true
+  when: bi_start_service | bool
+
+- name: Reload nginx
+  ansible.builtin.command: nginx -t
+  changed_when: false
+  notify: Reload nginx service
+
+- name: Reload nginx service
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded

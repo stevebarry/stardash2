@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+venv/
+.venv/
+.pytest_cache/
+ansible/inventory.ini
+ansible/.vault_pass*

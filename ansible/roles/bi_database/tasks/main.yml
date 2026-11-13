@@ -1,0 +1,151 @@
+# Create the PostgreSQL objects the BI Dashboard needs.
+# Local install: runs as the postgres OS user over the Unix socket.
+# Existing server: connects to bi_db_host as bi_db_superuser, once per play.
+
+- name: Install PostgreSQL server
+  ansible.builtin.apt:
+    name: [postgresql, postgresql-contrib]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: bi_install_postgresql | bool
+
+- name: Install psycopg2 and acl for the community.postgresql modules
+  ansible.builtin.apt:
+    name: [python3-psycopg2, acl]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure PostgreSQL is running
+  ansible.builtin.service:
+    name: postgresql
+    state: started
+    enabled: true
+  when: bi_install_postgresql | bool
+
+- name: Configure database objects
+  become_user: "{{ 'postgres' if bi_install_postgresql | bool else 'root' }}"
+  run_once: "{{ not (bi_install_postgresql | bool) }}"
+  # Listed per module: community.postgresql does not ship a module_defaults action group.
+  module_defaults:
+    community.postgresql.postgresql_db: &bi_pg_login
+      # empty login_host = Unix socket (peer auth as the postgres OS user)
+      login_host: "{{ '' if bi_install_postgresql | bool else bi_db_host }}"
+      port: "{{ bi_db_port }}"
+      login_user: "{{ 'postgres' if bi_install_postgresql | bool else bi_db_superuser | default('postgres') }}"
+      login_password: "{{ '' if bi_install_postgresql | bool else bi_db_superuser_password | default('') }}"
+    community.postgresql.postgresql_user: *bi_pg_login
+    community.postgresql.postgresql_privs: *bi_pg_login
+    community.postgresql.postgresql_query: *bi_pg_login
+    community.postgresql.postgresql_script: *bi_pg_login
+    community.postgresql.postgresql_membership: *bi_pg_login
+  block:
+    - name: Create database
+      community.postgresql.postgresql_db:
+        name: "{{ bi_db_name }}"
+        state: present
+
+    - name: Create application service account
+      community.postgresql.postgresql_user:
+        name: "{{ bi_db_user }}"
+        password: "{{ bi_db_password }}"
+        role_attr_flags: LOGIN
+        db: "{{ bi_db_name }}"
+      no_log: true
+
+    - name: Allow the service account to connect and create the config schema
+      community.postgresql.postgresql_privs:
+        db: "{{ bi_db_name }}"
+        type: database
+        privs: CONNECT,CREATE
+        roles: "{{ bi_db_user }}"
+
+    - name: Create admin role
+      community.postgresql.postgresql_user:
+        name: "{{ bi_admin_role }}"
+        role_attr_flags: NOLOGIN
+        db: "{{ bi_db_name }}"
+
+    - name: Load sample data
+      when: bi_load_sample_data | bool
+      block:
+        - name: Check whether the sample view exists
+          community.postgresql.postgresql_query:
+            db: "{{ bi_db_name }}"
+            query: "SELECT to_regclass('demo.sales_demo') IS NOT NULL AS present"
+          register: bi_sample_check
+
+        - name: Copy sample data script
+          ansible.builtin.copy:
+            src: "{{ bi_source_dir }}/sql/sample_data.sql"
+            dest: /tmp/bi_sample_data.sql
+            mode: "0644"
+          when: not bi_sample_check.query_result[0].present
+
+        - name: Run sample data script
+          community.postgresql.postgresql_script:
+            db: "{{ bi_db_name }}"
+            path: /tmp/bi_sample_data.sql
+          when: not bi_sample_check.query_result[0].present
+
+        - name: Grant the service account read access to the sample view
+          community.postgresql.postgresql_privs:
+            db: "{{ bi_db_name }}"
+            type: "{{ item.type }}"
+            objs: "{{ item.objs }}"
+            schema: "{{ item.schema | default(omit) }}"
+            privs: "{{ item.privs }}"
+            roles: "{{ bi_db_user }}"
+          loop:
+            - { type: schema, objs: demo, privs: USAGE }
+            - { type: table, objs: sales_demo, schema: demo, privs: SELECT }
+
+    - name: Grant schema usage on source views
+      community.postgresql.postgresql_privs:
+        db: "{{ bi_db_name }}"
+        type: schema
+        objs: "{{ item.schema }}"
+        privs: USAGE
+        roles: "{{ bi_db_user }}"
+      loop: "{{ bi_source_grants }}"
+
+    - name: Grant SELECT on source views
+      community.postgresql.postgresql_privs:
+        db: "{{ bi_db_name }}"
+        type: table
+        schema: "{{ item.schema }}"
+        objs: "{{ item.views | join(',') }}"
+        privs: SELECT
+        roles: "{{ bi_db_user }}"
+      loop: "{{ bi_source_grants }}"
+
+    - name: Create login users
+      community.postgresql.postgresql_user:
+        name: "{{ item.name }}"
+        password: "{{ vault_bi_login_passwords[item.name] }}"
+        role_attr_flags: LOGIN
+        db: "{{ bi_db_name }}"
+      loop: "{{ bi_db_login_users }}"
+      loop_control:
+        label: "{{ item.name }}"
+      no_log: true
+
+    - name: Grant roles to login users
+      community.postgresql.postgresql_membership:
+        db: "{{ bi_db_name }}"
+        groups: "{{ item.roles }}"
+        target_roles: ["{{ item.name }}"]
+        state: present
+      loop: "{{ bi_db_login_users }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: item.roles | default([]) | length > 0
+
+    - name: Add existing users to the admin role
+      community.postgresql.postgresql_membership:
+        db: "{{ bi_db_name }}"
+        groups: ["{{ bi_admin_role }}"]
+        target_roles: "{{ bi_admin_members }}"
+        state: present
+      when: bi_admin_members | length > 0

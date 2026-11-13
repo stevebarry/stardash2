@@ -1,0 +1,14 @@
+[Unit]
+Description=BI Dashboard (gunicorn)
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/bi-dashboard
+Environment="PATH=/opt/bi-dashboard/venv/bin"
+ExecStart=/opt/bi-dashboard/venv/bin/gunicorn -c gunicorn.conf.py wsgi:app
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
