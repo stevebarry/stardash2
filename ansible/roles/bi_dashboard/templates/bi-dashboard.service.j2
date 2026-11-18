@@ -1,6 +1,6 @@
 # {{ ansible_managed }}
 [Unit]
-Description=BI Dashboard (gunicorn)
+Description=BI Dashboard {{ bi_app_name }} (gunicorn, {{ bi_url_prefix }})
 After=network.target{{ ' postgresql.service' if bi_install_postgresql | bool and bi_manage_database | bool else '' }}
 
 [Service]
@@ -8,6 +8,9 @@ User={{ bi_app_user }}
 Group={{ bi_app_group }}
 WorkingDirectory={{ bi_app_dir }}
 Environment="PATH={{ bi_app_dir }}/venv/bin"
+# /run/{{ bi_app_name }}/ holds the gunicorn socket that NGINX connects to
+RuntimeDirectory={{ bi_app_name }}
+RuntimeDirectoryMode=0755
 ExecStart={{ bi_app_dir }}/venv/bin/gunicorn -c gunicorn.conf.py wsgi:app
 Restart=on-failure
 

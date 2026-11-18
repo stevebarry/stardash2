@@ -1,14 +1,24 @@
 // Shared helpers for the BI Dashboard pages.
 
+// URL prefix the app is served under, e.g. "/stardash" (set in base.html; "" at the site root).
+const APP_ROOT = window.APP_ROOT || "";
+
+// Turn an application path such as "/api/views" into a URL under the prefix.
+function appUrl(path) {
+  return APP_ROOT + path;
+}
+
 async function api(method, url, body) {
   const opts = { method, headers: {} };
   if (body !== undefined) {
     opts.headers["Content-Type"] = "application/json";
     opts.body = JSON.stringify(body);
   }
-  const res = await fetch(url, opts);
+  const res = await fetch(appUrl(url), opts);
   if (res.status === 401) {
-    window.location = "/login?next=" + encodeURIComponent(window.location.pathname);
+    let here = window.location.pathname;
+    if (APP_ROOT && here.startsWith(APP_ROOT)) here = here.slice(APP_ROOT.length) || "/";
+    window.location = appUrl("/login?next=" + encodeURIComponent(here));
     throw new Error("Not logged in");
   }
   const type = res.headers.get("Content-Type") || "";

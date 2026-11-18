@@ -40,7 +40,7 @@ if (newBtn) {
     };
     try {
       const res = await api("POST", "/api/dashboards", body);
-      window.location = `/dashboard/${res.id}`;
+      window.location = appUrl(`/dashboard/${res.id}`);
     } catch (err) {
       showError(form, err.message);
     }

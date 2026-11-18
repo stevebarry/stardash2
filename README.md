@@ -2,6 +2,8 @@
 
 A web dashboard for business intelligence analysis, built with Flask on PostgreSQL. It runs under gunicorn behind NGINX on Ubuntu.
 
+It is one of several self-contained applications sharing one NGINX instance. Each has its own URL prefix, folder, gunicorn service and socket. This one is served at **`http://<server>/stardash/`** (see [Sharing NGINX with other applications](#sharing-nginx-with-other-applications)).
+
 - **Dashboard list:** shows the dashboards you are allowed to see. Admins can also create and delete dashboards.
 - **Dashboard screen:**
   - Filters: a date period shortcut, start and end dates, and multi-select filters for each attribute column.
@@ -24,14 +26,14 @@ A web dashboard for business intelligence analysis, built with Flask on PostgreS
 ## Project layout
 
 ```
-config.py              database credentials, config schema, admin role, secret key
+config.py              URL prefix, database credentials, config schema, admin role, secret key
 wsgi.py                WSGI entry point (gunicorn wsgi:app)
 gunicorn.conf.py       gunicorn settings
 app/                   Flask application (routes, templates, static JS/CSS)
 sql/schema.sql         configuration tables
 sql/sample_data.sql    optional demo view demo.sales_demo and role sales_reader
 scripts/init_db.py     creates the configuration schema and tables
-deploy/                NGINX site and systemd unit (manual install)
+deploy/                shared NGINX server block, this app's NGINX locations, systemd unit (manual install)
 ansible/               Ansible playbook for automated deployment
 tests/                 unit tests (no database needed)
 ```
@@ -51,10 +53,10 @@ sudo apt install -y python3 python3-venv python3-pip nginx postgresql-client \
 ### 2. Application files and virtualenv
 
 ```bash
-sudo mkdir -p /opt/bi-dashboard
-sudo cp -r . /opt/bi-dashboard
-sudo chown -R $USER /opt/bi-dashboard
-cd /opt/bi-dashboard
+sudo mkdir -p /opt/stardash
+sudo cp -r . /opt/stardash
+sudo chown -R $USER /opt/stardash
+cd /opt/stardash
 python3 -m venv venv
 venv/bin/pip install -r requirements.txt
 ```
@@ -83,6 +85,7 @@ Users who log in need the `CONNECT` privilege on the database (granted to `PUBLI
 
 Edit `config.py`:
 
+- `URL_PREFIX`: the URL path the app is served under (default `/stardash`). It must match the NGINX locations file. Use `""` to serve at the site root.
 - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`: the service connection
 - `CONFIG_SCHEMA`: the schema for the configuration tables (default `bi_config`)
 - `ADMIN_ROLE`: the role that can create and delete dashboards (default `bi_admin`)
@@ -116,45 +119,65 @@ The application is not started automatically. Choose one of the options below.
 ### Option A: development server (quick test)
 
 ```bash
-cd /opt/bi-dashboard
+cd /opt/stardash
 venv/bin/flask --app wsgi run --host 0.0.0.0 --port 5000
 ```
 
-Open `http://<server>:5000` and log in with a PostgreSQL user.
+Open `http://<server>:5000/stardash/` and log in with a PostgreSQL user. (`http://<server>:5000/` redirects there.)
 
 ### Option B: gunicorn in the foreground
 
 ```bash
-cd /opt/bi-dashboard
+cd /opt/stardash
 venv/bin/gunicorn -c gunicorn.conf.py wsgi:app
 ```
 
-This listens on `127.0.0.1:8000`. Put NGINX in front of it (step 2 of Option C).
+This listens on `127.0.0.1:8000`, with the app at `http://127.0.0.1:8000/stardash/`. The production service in Option C uses a Unix socket instead, so NGINX is configured for that.
 
 ### Option C: production (systemd + NGINX)
 
-1. Install and start the gunicorn service:
+1. Install and start the gunicorn service. It listens on the Unix socket `/run/stardash/gunicorn.sock`, which systemd creates:
 
    ```bash
-   sudo chown -R www-data:www-data /opt/bi-dashboard
-   sudo cp deploy/systemd/bi-dashboard.service /etc/systemd/system/
+   sudo chown -R www-data:www-data /opt/stardash
+   sudo cp deploy/systemd/stardash.service /etc/systemd/system/
    sudo systemctl daemon-reload
-   sudo systemctl enable --now bi-dashboard
-   sudo systemctl status bi-dashboard
+   sudo systemctl enable --now stardash
+   sudo systemctl status stardash
    ```
 
-2. Configure NGINX:
+2. Configure NGINX. The shared server block is installed once per server. If another application already installed `/etc/nginx/sites-available/apps`, skip the first three commands:
 
    ```bash
-   sudo cp deploy/nginx/bi-dashboard.conf /etc/nginx/sites-available/bi-dashboard
-   sudo ln -s /etc/nginx/sites-available/bi-dashboard /etc/nginx/sites-enabled/
+   sudo cp deploy/nginx/apps.conf /etc/nginx/sites-available/apps        # shared server block (once per server)
+   sudo ln -s /etc/nginx/sites-available/apps /etc/nginx/sites-enabled/
    sudo rm -f /etc/nginx/sites-enabled/default
+
+   sudo mkdir -p /etc/nginx/app-locations
+   sudo cp deploy/nginx/app-locations/stardash.conf /etc/nginx/app-locations/   # this application only
    sudo nginx -t && sudo systemctl reload nginx
    ```
 
-3. Open `http://<server>/`. For production, add TLS, for example with certbot (`sudo apt install certbot python3-certbot-nginx && sudo certbot --nginx`).
+3. Open `http://<server>/stardash/`. For production, add TLS, for example with certbot (`sudo apt install certbot python3-certbot-nginx && sudo certbot --nginx`). certbot edits the shared server block, so all applications get TLS at once.
 
-Logs: `journalctl -u bi-dashboard -f` for the app and `/var/log/nginx/` for NGINX.
+Logs: `journalctl -u stardash -f` for the app and `/var/log/nginx/` for NGINX.
+
+### Sharing NGINX with other applications
+
+This application is designed to live next to other applications on one NGINX server, each under its own path:
+
+| | This application | Each other application |
+|---|---|---|
+| URL | `http://<server>/stardash/` | its own prefix, e.g. `/otherapp/` |
+| Code | `/opt/stardash/` | its own folder |
+| Service | `stardash.service` | its own unit |
+| gunicorn | `unix:/run/stardash/gunicorn.sock` | its own socket, so no port numbers to coordinate |
+| NGINX | `/etc/nginx/app-locations/stardash.conf` | its own `<app>.conf` |
+| Session cookie | `stardash_session`, path `/stardash/` | its own cookie, so logins don't clash |
+
+One shared `server {}` block (`/etc/nginx/sites-available/apps`) includes `/etc/nginx/app-locations/*.conf`. The server-wide settings (`listen`, `server_name`, TLS) belong there. Everything specific to an application belongs in its own locations file, so you can add, update or remove one application without touching the others. To remove this one: `sudo systemctl disable --now stardash`, delete `/etc/nginx/app-locations/stardash.conf`, then reload NGINX.
+
+NGINX passes the full path, `/stardash/...`, to gunicorn. The app moves the prefix into the WSGI `SCRIPT_NAME` (see `PrefixMiddleware` in `app/__init__.py`), so every generated link, redirect, static file URL and JavaScript API call includes the prefix. To change the prefix, change `URL_PREFIX` in `config.py` and the three `/stardash` locations in the NGINX file together. With Ansible, setting `bi_url_prefix` changes both.
 
 ## Running on Windows for testing
 
@@ -225,7 +248,7 @@ python scripts\init_db.py
 flask --app wsgi run --debug
 ```
 
-Open <http://127.0.0.1:5000> and log in with a PostgreSQL login user (e.g. `alice` above). `--debug` reloads the app when you change code and shows tracebacks in the browser. Add `--port 8080` to use another port, or `--host 0.0.0.0` to allow other machines to connect. Windows Firewall will then ask for permission. Press `Ctrl+C` to stop.
+Open <http://127.0.0.1:5000/stardash/> and log in with a PostgreSQL login user (e.g. `alice` above). `--debug` reloads the app when you change code and shows tracebacks in the browser. Add `--port 8080` to use another port, or `--host 0.0.0.0` to allow other machines to connect. Windows Firewall will then ask for permission. Press `Ctrl+C` to stop.
 
 If `flask` is not found, the virtualenv is not active: run `.\venv\Scripts\Activate.ps1`, or call `.\venv\Scripts\flask.exe` directly.
 
@@ -247,7 +270,7 @@ The playbook in `ansible/` performs the manual installation and Option C above o
 - copies the code and builds the virtualenv
 - writes `config.py` and `gunicorn.conf.py` from variables
 - runs `scripts/init_db.py`
-- installs the systemd unit and the NGINX site
+- installs the systemd unit and this application's NGINX locations. It also creates the shared NGINX server block if no other application has created it yet.
 - optionally sets up PostgreSQL (database, service account, admin role, grants, login users, sample data)
 
 It is idempotent, so you can run it again to deploy new code or config changes. The service is restarted only when something changed.
@@ -327,10 +350,13 @@ Edit `group_vars/all/main.yml`. The main choices are:
 | `bi_admin_members` | `[]` | Existing users to add to the admin role |
 | `bi_source_grants` | `[]` | Source views the service account may read, e.g. `[{schema: sales, views: [orders_v]}]` |
 | `bi_load_sample_data` | `false` | Load `sql/sample_data.sql` once, and grant the service account access to `demo.sales_demo` |
-| `bi_server_name` / `bi_http_port` | `_` / `80` | NGINX `server_name` and `listen` port |
+| `bi_app_name` | `stardash` | Name used for the app folder (`/opt/stardash`), systemd service, socket directory (`/run/stardash`) and NGINX locations file |
+| `bi_url_prefix` | `/stardash` | URL path of the app. Written to `config.py` (`URL_PREFIX`) and the NGINX locations file. |
+| `bi_nginx_shared_site` / `bi_nginx_locations_dir` | `apps` / `/etc/nginx/app-locations` | Shared server block and the directory it includes. Use the same values for all the applications on the server. |
+| `bi_server_name` / `bi_http_port` | `_` / `80` | NGINX `server_name` and `listen` port. Only used when the shared server block is first created. |
 | `bi_gunicorn_workers` / `bi_gunicorn_threads` | `3` / `2` | gunicorn sizing |
 | `bi_configure_ufw` | `false` | Allow OpenSSH and the HTTP port, then enable ufw |
-| `bi_start_service` | `true` | Set to `false` to install everything but leave the service stopped and disabled. Start it later with `sudo systemctl enable --now bi-dashboard`. |
+| `bi_start_service` | `true` | Set to `false` to install everything but leave the service stopped and disabled. Start it later with `sudo systemctl enable --now stardash`. |
 
 Example for a demo box with an admin and a reader:
 
@@ -360,20 +386,23 @@ ansible-playbook -i inventory.ini site.yml --ask-vault-pass --tags database   # 
 ansible-playbook -i inventory.ini site.yml --ask-vault-pass --limit bi01.example.com
 ```
 
-The last task requests `http://127.0.0.1/login` on each server and fails the run if the page does not return 200.
+The last task requests `http://127.0.0.1/stardash/login` on each server and fails the run if the page does not return 200.
 
 ### What the playbook manages on the server
 
 | Path | Source |
 |---|---|
-| `/opt/bi-dashboard/` | Project files synced with rsync (`.git`, `venv`, `tests`, `ansible` excluded); files removed from the project are removed here too |
-| `/opt/bi-dashboard/config.py` | Template `config.py.j2`; mode 0640, group `www-data` |
-| `/opt/bi-dashboard/gunicorn.conf.py` | Template `gunicorn.conf.py.j2` |
-| `/opt/bi-dashboard/venv/` | `pip install -r requirements.txt` |
-| `/etc/systemd/system/bi-dashboard.service` | Template `bi-dashboard.service.j2` |
-| `/etc/nginx/sites-available/bi-dashboard` | Template `nginx-site.conf.j2`, checked with `nginx -t` before reload |
+| `/opt/stardash/` | Project files synced with rsync (`.git`, `venv`, `tests`, `ansible` excluded); files removed from the project are removed here too |
+| `/opt/stardash/config.py` | Template `config.py.j2`; mode 0640, group `www-data` |
+| `/opt/stardash/gunicorn.conf.py` | Template `gunicorn.conf.py.j2` |
+| `/opt/stardash/venv/` | `pip install -r requirements.txt` |
+| `/etc/systemd/system/stardash.service` | Template `bi-dashboard.service.j2` (creates `/run/stardash/` for the gunicorn socket) |
+| `/etc/nginx/app-locations/stardash.conf` | Template `nginx-locations.conf.j2`: this application's locations, checked with `nginx -t` before reload |
+| `/etc/nginx/sites-available/apps` | Template `nginx-site.conf.j2`: the shared server block, **created only if missing** and never overwritten. If it exists but does not include `/etc/nginx/app-locations/*.conf`, the run stops with instructions. |
 
-Make changes through the Ansible variables, not on the server: the next run overwrites `config.py`, `gunicorn.conf.py`, the systemd unit and the NGINX site. TLS is not configured by the playbook; add it with certbot as described in Option C.
+Make changes through the Ansible variables, not on the server: the next run overwrites `config.py`, `gunicorn.conf.py`, the systemd unit and this application's NGINX locations file.
+
+Upgrading from a version that installed a stand-alone site: the playbook removes the old `/etc/nginx/sites-*/stardash` site, which would otherwise take over the whole server. The old `/opt/bi-dashboard` folder is left in place; delete it once the new deployment works. TLS is not configured by the playbook; add it with certbot as described in Option C.
 
 ## Using the dashboard
 

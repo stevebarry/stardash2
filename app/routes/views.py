@@ -13,10 +13,11 @@ def login():
         password = request.form.get("password", "")
         if username and auth.verify_credentials(username, password):
             auth.login_user(username, auth.lookup_roles(username))
+            # "next" is a path inside this application (without the URL prefix)
             target = request.args.get("next", "")
-            if not target.startswith("/") or target.startswith("//"):
-                target = url_for("views.dashboard_list")
-            return redirect(target)
+            if not target.startswith("/") or target.startswith("//") or "\\" in target:
+                return redirect(url_for("views.dashboard_list"))
+            return redirect(request.script_root + target)
         flash("Invalid username or password")
     return render_template("login.html")
 

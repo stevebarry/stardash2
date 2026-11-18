@@ -10,6 +10,11 @@ DB_NAME = "test"
 DB_USER = "postgres"
 DB_PASSWORD = "steve"
 
+# URL path the application is served under, e.g. http://<server>/stardash/.
+# Several applications can share one NGINX server, each under its own prefix.
+# Use "" to serve the application at the root of the site.
+URL_PREFIX = "/stardash"
+
 # Schema that holds the application's configuration tables
 CONFIG_SCHEMA = "stardash"
 

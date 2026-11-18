@@ -1,21 +1,10 @@
 # {{ ansible_managed }}
+# Shared server block for all applications on this NGINX instance.
+# Each application adds its own locations in {{ bi_nginx_locations_dir }}/<app>.conf.
+# Created by whichever application is deployed first and not overwritten afterwards.
 server {
     listen {{ bi_http_port }};
     server_name {{ bi_server_name }};
 
-    client_max_body_size {{ bi_client_max_body_size }};   # export requests carry chart images
-
-    location /static/ {
-        alias {{ bi_app_dir }}/app/static/;
-        expires 1h;
-    }
-
-    location / {
-        proxy_pass http://{{ bi_gunicorn_bind }};
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout {{ bi_gunicorn_timeout }}s;
-    }
+    include {{ bi_nginx_locations_dir }}/*.conf;
 }

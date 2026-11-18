@@ -10,6 +10,9 @@ DB_NAME = {{ bi_db_name | to_json }}
 DB_USER = {{ bi_db_user | to_json }}
 DB_PASSWORD = {{ bi_db_password | to_json }}
 
+# URL path the application is served under (NGINX location prefix)
+URL_PREFIX = {{ bi_url_prefix | to_json }}
+
 # Schema that holds the application's configuration tables
 CONFIG_SCHEMA = {{ bi_config_schema | to_json }}
 

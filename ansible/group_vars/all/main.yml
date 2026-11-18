@@ -2,20 +2,33 @@
 # (see vault.example.yml).
 
 # ---- application ------------------------------------------------------------
+# This is one of several applications sharing one NGINX server. Each one lives in
+# its own directory, runs its own gunicorn service on its own Unix socket, and is
+# reached under its own URL prefix: http://<server>/stardash/
+bi_app_name: stardash                      # directory, service, socket and NGINX file name
+bi_url_prefix: "/{{ bi_app_name }}"        # URL path; written to config.py as URL_PREFIX
+
 bi_source_dir: "{{ playbook_dir }}/.."     # project root on the control machine
-bi_app_dir: /opt/bi-dashboard
+bi_app_dir: "/opt/{{ bi_app_name }}"
 bi_app_user: www-data
 bi_app_group: www-data
-bi_service_name: stardash
+bi_service_name: "{{ bi_app_name }}"
 bi_start_service: true                     # false = install everything but leave the service stopped
 
-# gunicorn
-bi_gunicorn_bind: "127.0.0.1:8000"
+# gunicorn. A Unix socket per application avoids port clashes between the apps.
+# systemd creates /run/<bi_app_name>/ (RuntimeDirectory) for it.
+bi_gunicorn_bind: "unix:/run/{{ bi_app_name }}/gunicorn.sock"
 bi_gunicorn_workers: 3
 bi_gunicorn_threads: 2
 bi_gunicorn_timeout: 120
 
-# NGINX
+# NGINX. All applications share one server block (site file bi_nginx_shared_site),
+# which includes every file in bi_nginx_locations_dir. This app only installs
+# <bi_nginx_locations_dir>/<bi_app_name>.conf, with the locations for its prefix.
+# The shared site is created only if it does not exist yet, so deploying one app
+# never overwrites the server block the others rely on.
+bi_nginx_shared_site: apps
+bi_nginx_locations_dir: /etc/nginx/app-locations
 bi_server_name: "_"
 bi_http_port: 80
 bi_nginx_remove_default_site: true

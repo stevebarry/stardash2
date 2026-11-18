@@ -111,20 +111,72 @@
     enabled: "{{ bi_start_service | bool }}"
     state: "{{ 'started' if bi_start_service | bool else 'stopped' }}"
 
-- name: Install NGINX site
+- name: Check URL prefix
+  ansible.builtin.assert:
+    that:
+      - bi_url_prefix is match('^/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$')
+    fail_msg: "bi_url_prefix must look like /stardash (leading slash, no trailing slash)."
+    quiet: true
+
+- name: Create the NGINX per-application locations directory
+  ansible.builtin.file:
+    path: "{{ bi_nginx_locations_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install this application's NGINX locations
   ansible.builtin.template:
-    src: nginx-site.conf.j2
-    dest: "/etc/nginx/sites-available/{{ bi_service_name }}"
+    src: nginx-locations.conf.j2
+    dest: "{{ bi_nginx_locations_dir }}/{{ bi_app_name }}.conf"
     owner: root
     group: root
     mode: "0644"
   notify: Reload nginx
 
-- name: Enable NGINX site
+# force: false - another application may already have created the shared server block
+- name: Install shared NGINX site (only if missing)
+  ansible.builtin.template:
+    src: nginx-site.conf.j2
+    dest: "/etc/nginx/sites-available/{{ bi_nginx_shared_site }}"
+    owner: root
+    group: root
+    mode: "0644"
+    force: false
+  notify: Reload nginx
+
+- name: Read the shared NGINX site
+  ansible.builtin.slurp:
+    src: "/etc/nginx/sites-available/{{ bi_nginx_shared_site }}"
+  register: bi_shared_site
+
+- name: Check the shared NGINX site includes the locations directory
+  ansible.builtin.assert:
+    that:
+      - (bi_nginx_locations_dir ~ '/') in (bi_shared_site.content | b64decode)
+    fail_msg: >-
+      /etc/nginx/sites-available/{{ bi_nginx_shared_site }} already exists but does not
+      include {{ bi_nginx_locations_dir }}/*.conf. Add
+      "include {{ bi_nginx_locations_dir }}/*.conf;" to its server block.
+    quiet: true
+
+- name: Enable shared NGINX site
   ansible.builtin.file:
-    src: "/etc/nginx/sites-available/{{ bi_service_name }}"
-    dest: "/etc/nginx/sites-enabled/{{ bi_service_name }}"
+    src: "/etc/nginx/sites-available/{{ bi_nginx_shared_site }}"
+    dest: "/etc/nginx/sites-enabled/{{ bi_nginx_shared_site }}"
     state: link
+  notify: Reload nginx
+
+# Earlier versions installed a stand-alone site that took over the whole server
+- name: Remove legacy stand-alone NGINX site
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/etc/nginx/sites-enabled/{{ bi_service_name }}"
+    - "/etc/nginx/sites-available/{{ bi_service_name }}"
+  when: bi_service_name != bi_nginx_shared_site
   notify: Reload nginx
 
 - name: Remove NGINX default site
@@ -161,7 +213,7 @@
 
 - name: Check the login page responds through NGINX
   ansible.builtin.uri:
-    url: "http://127.0.0.1:{{ bi_http_port }}/login"
+    url: "http://127.0.0.1:{{ bi_http_port }}{{ bi_url_prefix }}/login"
     status_code: 200
   register: bi_health
   retries: 5

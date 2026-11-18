@@ -1,0 +1,25 @@
+# {{ ansible_managed }}
+# Locations for {{ bi_app_name }}, served at http://<server>{{ bi_url_prefix }}/
+# Included by the shared server block ({{ bi_nginx_shared_site }}).
+
+location = {{ bi_url_prefix }} {
+    return 301 {{ bi_url_prefix }}/;
+}
+
+location {{ bi_url_prefix }}/static/ {
+    alias {{ bi_app_dir }}/app/static/;
+    expires 1h;
+}
+
+location {{ bi_url_prefix }}/ {
+    client_max_body_size {{ bi_client_max_body_size }};   # export requests carry chart images
+
+    # No URI after the address: the full path, including {{ bi_url_prefix }}, is passed on.
+    # The app strips the prefix itself (URL_PREFIX in config.py).
+    proxy_pass http://{{ bi_gunicorn_bind }};
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout {{ bi_gunicorn_timeout }}s;
+}
